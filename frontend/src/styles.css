@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.mic-button {
+  display: grid;
+  width: 100%;
+  min-height: 180px;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid rgb(6 95 70);
+  background: rgb(4 120 87);
+  color: white;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.mic-button:hover {
+  background: rgb(6 95 70);
+  box-shadow: 0 16px 34px rgba(4, 120, 87, 0.22);
+}
+
+.mic-button:active {
+  transform: translateY(1px);
+}
+
+.mic-button.is-listening {
+  background: rgb(190 18 60);
+  border-color: rgb(159 18 57);
+  animation: pulse-ring 1.4s ease-in-out infinite;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgb(120 113 108);
+}
+
+.status-idle {
+  background: rgb(4 120 87);
+}
+
+.status-listening,
+.status-speaking {
+  background: rgb(14 165 233);
+}
+
+.status-processing {
+  background: rgb(217 119 6);
+}
+
+.status-error {
+  background: rgb(225 29 72);
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.34);
+  }
+
+  70% {
+    box-shadow: 0 0 0 20px rgba(225, 29, 72, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0);
+  }
+}

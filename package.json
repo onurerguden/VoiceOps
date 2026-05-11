@@ -1,0 +1,15 @@
+{
+  "name": "voiceops-hackathon-google",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "dev": "bash scripts/run-app.sh",
+    "backend": "bash scripts/run-backend.sh",
+    "frontend": "bash scripts/run-frontend.sh",
+    "reset-db": "bash scripts/reset-demo-data.sh",
+    "set-key": "bash scripts/set-key.sh",
+    "doctor": "bash scripts/doctor.sh",
+    "test": "bash scripts/test.sh"
+  }
+}
