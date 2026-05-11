@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import Customer, Order, OrderItem, Product, QueryLog, Stock
 
 
-def normalize_text(value: str) -> str:
-    lowered = value.lower().strip()
+def normalize_text(value: str | None) -> str:
+    lowered = (value or "").lower().strip()
     replacements = {
         "ı": "i",
         "ğ": "g",
@@ -64,6 +64,8 @@ def order_to_payload(order: Order) -> dict:
 
 def find_product(db: Session, product_name: str) -> Product | None:
     needle = normalize_text(product_name)
+    if not needle:
+        return None
     products = db.query(Product).options(joinedload(Product.stock)).all()
     for product in products:
         normalized_name = normalize_text(product.name)
@@ -135,6 +137,8 @@ def get_customer_info(db: Session, customer_name: str | None = None, order_id: i
         customer = order.customer if order else None
     elif customer_name:
         needle = normalize_text(customer_name)
+        if not needle:
+            return {"found": False, "message": "Musteri kaydi bulunamadi."}
         customers = db.query(Customer).all()
         for candidate in customers:
             normalized_name = normalize_text(candidate.name)

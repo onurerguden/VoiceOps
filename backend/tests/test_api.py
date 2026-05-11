@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_db
-from app.main import app, get_agent
+from app.main import create_app, get_agent
 from app.seed import seed_demo_data
 from app.services import tools as db_tools
 from app.services.gemini_agent import AgentResult
@@ -45,7 +45,7 @@ class FakeAgent:
 
 
 @pytest.fixture()
-def client(tmp_path: Path):
+def db_session_factory(tmp_path: Path):
     db_path = tmp_path / "voiceops_test.db"
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -54,21 +54,29 @@ def client(tmp_path: Path):
     with TestingSessionLocal() as db:
         seed_demo_data(db)
 
+    yield TestingSessionLocal
+
+    Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture()
+def client(db_session_factory):
+    test_app = create_app(seed_on_startup=False)
+
     def override_db():
-        db = TestingSessionLocal()
+        db = db_session_factory()
         try:
             yield db
         finally:
             db.close()
 
-    app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[get_agent] = lambda: FakeAgent()
+    test_app.dependency_overrides[get_db] = override_db
+    test_app.dependency_overrides[get_agent] = lambda: FakeAgent()
 
-    with TestClient(app) as test_client:
+    with TestClient(test_app) as test_client:
         yield test_client
 
-    app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=engine)
+    test_app.dependency_overrides.clear()
 
 
 def test_seed_counts(client):
@@ -136,3 +144,18 @@ def test_missing_parameters_do_not_update_stock(client):
     assert response.status_code == 200
     assert response.json()["intent"] is None
     assert client.get("/api/stock").json() == before
+
+
+def test_empty_product_and_customer_names_do_not_match_first_records(db_session_factory):
+    with db_session_factory() as db:
+        domates_before = db_tools.check_stock(db, "Domates")["stock"]["quantity"]
+
+        assert db_tools.check_stock(db, "")["found"] is False
+        assert db_tools.check_stock(db, "   ")["found"] is False
+        assert db_tools.get_customer_info(db, customer_name="   ")["found"] is False
+
+        update_result = db_tools.update_stock(db, "", 5, "subtract")
+        domates_after = db_tools.check_stock(db, "Domates")["stock"]["quantity"]
+
+        assert update_result["updated"] is False
+        assert domates_after == domates_before

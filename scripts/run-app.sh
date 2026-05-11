@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}"
 
 cleanup() {
   if [ -n "${BACKEND_PID:-}" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
@@ -13,8 +14,8 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-echo "Backend baslatiliyor: http://127.0.0.1:${BACKEND_PORT}"
-BACKEND_PORT="$BACKEND_PORT" bash "$ROOT_DIR/scripts/run-backend.sh" &
+echo "Backend baslatiliyor: ${BACKEND_URL}"
+CORS_ORIGINS="${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT},http://127.0.0.1:${FRONTEND_PORT}}" BACKEND_PORT="$BACKEND_PORT" bash "$ROOT_DIR/scripts/run-backend.sh" &
 BACKEND_PID=$!
 
 echo "Backend hazir olana kadar bekleniyor..."
@@ -24,7 +25,7 @@ for _ in {1..30}; do
     echo "Backend baslamadan kapandi. Yukaridaki hatayi kontrol edin."
     exit 1
   fi
-  if curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/health" >/dev/null 2>&1; then
+  if curl -fsS "${BACKEND_URL}/api/health" >/dev/null 2>&1; then
     backend_ready=true
     break
   fi
@@ -37,4 +38,4 @@ if [ "$backend_ready" != "true" ]; then
 fi
 
 echo "Frontend baslatiliyor: http://127.0.0.1:${FRONTEND_PORT}"
-FRONTEND_PORT="$FRONTEND_PORT" bash "$ROOT_DIR/scripts/run-frontend.sh"
+VITE_API_BASE_URL="${VITE_API_BASE_URL:-$BACKEND_URL}" FRONTEND_PORT="$FRONTEND_PORT" bash "$ROOT_DIR/scripts/run-frontend.sh"

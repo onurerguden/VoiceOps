@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from time import perf_counter
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.services.gemini_agent import AgentResult, GeminiAgent
 from app.services.tools import list_history, list_orders, list_stock, product_to_payload, update_stock
 
 settings = get_settings()
+router = APIRouter(prefix="/api")
 
 
 @asynccontextmanager
@@ -29,21 +30,6 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(
-    title="VoiceOps API",
-    description="Turkce depo ici sesli operasyon asistani MVP API",
-    version="0.1.0",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 @lru_cache
 def get_agent() -> GeminiAgent:
@@ -55,12 +41,12 @@ def get_agent() -> GeminiAgent:
     return GeminiAgent(settings=settings)
 
 
-@app.get("/api/health")
+@router.get("/health")
 def health() -> dict:
     return {"ok": True, "service": "voiceops-api", "model": settings.gemini_model}
 
 
-@app.post("/api/query", response_model=QueryResponse)
+@router.post("/query", response_model=QueryResponse)
 def query_voiceops(
     request: QueryRequest,
     db: Session = Depends(get_db),
@@ -102,7 +88,7 @@ def query_voiceops(
     )
 
 
-@app.get("/api/orders", response_model=list[OrderOut])
+@router.get("/orders", response_model=list[OrderOut])
 def get_orders(
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -110,7 +96,7 @@ def get_orders(
     return list_orders(db, limit)
 
 
-@app.get("/api/stock", response_model=list[StockOut])
+@router.get("/stock", response_model=list[StockOut])
 def get_stock(
     critical_only: bool = False,
     db: Session = Depends(get_db),
@@ -118,7 +104,7 @@ def get_stock(
     return list_stock(db, critical_only)
 
 
-@app.get("/api/history", response_model=list[HistoryOut])
+@router.get("/history", response_model=list[HistoryOut])
 def get_history(
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -126,7 +112,7 @@ def get_history(
     return list_history(db, limit)
 
 
-@app.patch("/api/stock/{product_id}", response_model=StockOut)
+@router.patch("/stock/{product_id}", response_model=StockOut)
 def patch_stock(
     product_id: int,
     request: StockPatchRequest,
@@ -143,3 +129,24 @@ def patch_stock(
     db.commit()
     db.refresh(stock)
     return product_to_payload(stock)
+
+
+def create_app(*, seed_on_startup: bool = True) -> FastAPI:
+    api = FastAPI(
+        title="VoiceOps API",
+        description="Turkce depo ici sesli operasyon asistani MVP API",
+        version="0.1.0",
+        lifespan=lifespan if seed_on_startup else None,
+    )
+    api.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    api.include_router(router)
+    return api
+
+
+app = create_app()
