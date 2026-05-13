@@ -10,53 +10,74 @@ import {
   MicOff,
   PackageCheck,
   Send,
+  TrendingDown,
+  Truck,
   Volume2,
   Warehouse,
+  Zap,
 } from "lucide-react";
 import { api, HistoryItem, Order, QueryResponse, Stock } from "./api";
 
 type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error";
 
 const statusCopy: Record<VoiceState, string> = {
-  idle: "Hazır",
-  listening: "Dinliyor",
-  processing: "İşleniyor",
-  speaking: "Konuşuyor",
-  error: "Hata",
+  idle: "Hazır — komut bekliyor",
+  listening: "🎤 Dinliyor...",
+  processing: "⚡ İşleniyor...",
+  speaking: "🔊 Konuşuyor...",
+  error: "⚠️ Hata",
 };
 
 const demoPrompts = [
-  "105 numaralı sipariş nerede?",
-  "Domatesten kaç kilo kaldı?",
-  "Domatesten 5 kilo düş",
-  "Bugün kaç sipariş geldi?",
-  "Kritik stokta ne var?",
+  { text: "105 numaralı sipariş nerede?", icon: "📦" },
+  { text: "Domatesten kaç kilo kaldı?", icon: "🍅" },
+  { text: "Domatesten 5 kilo düş", icon: "📉" },
+  { text: "Bugün kaç sipariş geldi?", icon: "📊" },
+  { text: "Kritik stokta ne var?", icon: "🚨" },
 ];
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 }).format(value);
 }
 
-function statusClass(status: string) {
-  if (status === "teslim edildi") return "bg-emerald-100 text-emerald-800";
-  if (status === "kargoda") return "bg-sky-100 text-sky-800";
-  if (status === "hazırlanıyor") return "bg-amber-100 text-amber-800";
-  return "bg-stone-200 text-stone-800";
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
+}
+
+function statusConfig(status: string) {
+  if (status === "teslim edildi") return { bg: "bg-emerald-500/15", text: "text-emerald-400", dot: "bg-emerald-400" };
+  if (status === "kargoda") return { bg: "bg-sky-500/15", text: "text-sky-400", dot: "bg-sky-400" };
+  if (status === "hazırlanıyor") return { bg: "bg-amber-500/15", text: "text-amber-400", dot: "bg-amber-400" };
+  return { bg: "bg-slate-500/15", text: "text-slate-400", dot: "bg-slate-400" };
 }
 
 function intentLabel(intent: string | null) {
-  const labels: Record<string, string> = {
-    get_order_status: "Sipariş",
-    check_stock: "Stok",
-    get_daily_summary: "Özet",
-    get_critical_stock: "Kritik",
-    get_customer_info: "Müşteri",
-    list_pending_orders: "Bekleyen",
-    update_stock: "Güncelleme",
+  const labels: Record<string, { text: string; color: string }> = {
+    get_order_status: { text: "Sipariş", color: "bg-sky-500/20 text-sky-400" },
+    check_stock: { text: "Stok", color: "bg-emerald-500/20 text-emerald-400" },
+    get_daily_summary: { text: "Özet", color: "bg-violet-500/20 text-violet-400" },
+    get_critical_stock: { text: "Kritik", color: "bg-rose-500/20 text-rose-400" },
+    get_customer_info: { text: "Müşteri", color: "bg-amber-500/20 text-amber-400" },
+    list_pending_orders: { text: "Bekleyen", color: "bg-orange-500/20 text-orange-400" },
+    update_stock: { text: "Güncelleme", color: "bg-teal-500/20 text-teal-400" },
   };
-  return intent ? labels[intent] ?? intent : "Belirsiz";
+  const found = intent ? labels[intent] : null;
+  return found ?? { text: "Belirsiz", color: "bg-slate-500/20 text-slate-400" };
 }
 
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "az önce";
+  if (mins < 60) return `${mins} dk önce`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} saat önce`;
+  return `${Math.floor(hours / 24)} gün önce`;
+}
+
+/* ═══════════════════════════════════════════
+   Main App
+   ═══════════════════════════════════════════ */
 export default function App() {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -174,209 +195,403 @@ export default function App() {
   const isBusy = voiceState === "listening" || voiceState === "processing" || voiceState === "speaking";
 
   return (
-    <main className="min-h-screen bg-[#f5f3ee] text-stone-950">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-4 border-b border-stone-300 pb-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded bg-emerald-700 text-white">
-              <Warehouse size={24} aria-hidden="true" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-normal">VoiceOps</h1>
-              <p className="text-sm text-stone-600">Depo içi sesli operasyon asistanı</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`status-dot status-${voiceState}`} />
-            <span className="text-sm font-medium text-stone-700">{statusCopy[voiceState]}</span>
-          </div>
-        </header>
+    <>
+      {/* Background gradient mesh */}
+      <div className="bg-mesh" />
 
-        <section className="grid gap-5 lg:grid-cols-[minmax(310px,380px)_1fr]">
-          <div className="flex flex-col gap-4 rounded border border-stone-300 bg-white p-4 shadow-panel">
-            <button
-              type="button"
-              onClick={voiceState === "listening" ? stopListening : startListening}
-              className={`mic-button ${voiceState === "listening" ? "is-listening" : ""}`}
-              aria-label={voiceState === "listening" ? "Dinlemeyi durdur" : "Mikrofonu başlat"}
-              title={voiceState === "listening" ? "Dinlemeyi durdur" : "Mikrofonu başlat"}
-            >
-              {voiceState === "listening" ? <MicOff size={44} /> : <Mic size={44} />}
-            </button>
+      <main className="relative z-10 min-h-screen text-slate-100">
+        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
 
-            <div className="rounded border border-stone-200 bg-stone-50 p-3">
-              <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase text-stone-500">
-                <Volume2 size={15} aria-hidden="true" />
-                Son Yanıt
+          {/* ── Header ── */}
+          <header className="glass-strong flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20">
+                <Warehouse size={24} className="text-white" aria-hidden="true" />
               </div>
-              <p className="min-h-16 text-base font-medium leading-7 text-stone-900">
-                {lastResponse?.answer ?? "Sesli komut bekleniyor."}
-              </p>
-              {lastResponse && (
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-stone-600">
-                  <span className="rounded bg-emerald-100 px-2 py-1 font-medium text-emerald-800">
-                    {intentLabel(lastResponse.intent)}
-                  </span>
-                  <span className="rounded bg-stone-200 px-2 py-1">{lastResponse.response_time_ms} ms</span>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">
+                  <span className="text-gradient">VoiceOps</span>
+                </h1>
+                <p className="text-sm text-slate-400">Depo içi sesli operasyon asistanı</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className={`status-dot status-${voiceState}`} />
+              <span className="text-sm font-medium text-slate-300">{statusCopy[voiceState]}</span>
+            </div>
+          </header>
+
+          {/* ── Main Grid ── */}
+          <section className="grid gap-6 lg:grid-cols-[minmax(320px,400px)_1fr]">
+
+            {/* ── Left: Voice Control Panel ── */}
+            <div className="flex flex-col gap-5">
+              {/* Mic Button */}
+              <div className="glass-strong p-5">
+                <button
+                  id="mic-button"
+                  type="button"
+                  onClick={voiceState === "listening" ? stopListening : startListening}
+                  className={`mic-button ${voiceState === "listening" ? "is-listening" : ""}`}
+                  aria-label={voiceState === "listening" ? "Dinlemeyi durdur" : "Mikrofonu başlat"}
+                  title={voiceState === "listening" ? "Dinlemeyi durdur" : "Mikrofonu başlat"}
+                >
+                  <div className="relative z-10 flex flex-col items-center gap-3">
+                    {voiceState === "listening" ? (
+                      <MicOff size={48} className="drop-shadow-lg" />
+                    ) : voiceState === "processing" ? (
+                      <Loader2 size={48} className="animate-spin drop-shadow-lg" />
+                    ) : voiceState === "speaking" ? (
+                      <Volume2 size={48} className="drop-shadow-lg" />
+                    ) : (
+                      <Mic size={48} className="drop-shadow-lg" />
+                    )}
+
+                    {/* Wave bars - visible when listening */}
+                    <div className="wave-bars">
+                      <div className="wave-bar" />
+                      <div className="wave-bar" />
+                      <div className="wave-bar" />
+                      <div className="wave-bar" />
+                      <div className="wave-bar" />
+                    </div>
+
+                    <span className="text-sm font-semibold opacity-80">
+                      {voiceState === "listening"
+                        ? "Dinleniyor... Durdurmak için dokun"
+                        : voiceState === "processing"
+                        ? "Gemini işliyor..."
+                        : voiceState === "speaking"
+                        ? "Yanıt okunuyor..."
+                        : "Dokunarak konuş"}
+                    </span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Response Card */}
+              <div className="glass-strong p-5 animate-fade-in">
+                <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <Volume2 size={14} aria-hidden="true" />
+                  Son Yanıt
+                </div>
+                <p className="min-h-[64px] text-base font-medium leading-7 text-slate-100">
+                  {lastResponse?.answer ?? (
+                    <span className="text-slate-500 italic">Sesli komut bekleniyor...</span>
+                  )}
+                </p>
+                {lastResponse && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${intentLabel(lastResponse.intent).color}`}>
+                      <Zap size={11} />
+                      {intentLabel(lastResponse.intent).text}
+                    </span>
+                    <span className="rounded-full bg-slate-700/50 px-3 py-1 text-xs font-medium text-slate-300">
+                      ⚡ {lastResponse.response_time_ms} ms
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Manual Input */}
+              <form onSubmit={handleManualSubmit} className="glass-strong flex gap-2 p-3">
+                <input
+                  id="query-input"
+                  value={manualText}
+                  onChange={(event) => setManualText(event.target.value)}
+                  className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none transition focus:border-emerald-500/50 focus:bg-white/8 focus:ring-2 focus:ring-emerald-500/20"
+                  placeholder="Komut yazın veya yukarıdan konuşun..."
+                />
+                <button
+                  id="submit-query"
+                  type="submit"
+                  disabled={!manualText.trim() || isBusy}
+                  className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 transition hover:shadow-emerald-500/30 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none"
+                  aria-label="Komutu gönder"
+                  title="Komutu gönder"
+                >
+                  {voiceState === "processing" ? (
+                    <Loader2 className="animate-spin" size={18} />
+                  ) : (
+                    <Send size={18} />
+                  )}
+                </button>
+              </form>
+
+              {/* Demo Prompts */}
+              <div className="glass-strong p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Hazır Komutlar
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  {demoPrompts.map((prompt) => (
+                    <button
+                      key={prompt.text}
+                      type="button"
+                      onClick={() => void submitQuery(prompt.text)}
+                      disabled={isBusy}
+                      className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-left text-sm font-medium text-slate-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/8 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <span className="text-lg">{prompt.icon}</span>
+                      {prompt.text}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="animate-slide-up flex gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300 backdrop-blur">
+                  <AlertTriangle className="mt-0.5 shrink-0 text-rose-400" size={18} aria-hidden="true" />
+                  <span>{error}</span>
                 </div>
               )}
             </div>
 
-            <form onSubmit={handleManualSubmit} className="flex gap-2">
-              <input
-                value={manualText}
-                onChange={(event) => setManualText(event.target.value)}
-                className="min-w-0 flex-1 rounded border border-stone-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
-                placeholder="Komut yazın"
-              />
-              <button
-                type="submit"
-                disabled={!manualText.trim() || isBusy}
-                className="grid h-10 w-10 place-items-center rounded bg-stone-950 text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
-                aria-label="Komutu gönder"
-                title="Komutu gönder"
-              >
-                {voiceState === "processing" ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-              </button>
-            </form>
+            {/* ── Right: Dashboard Panels ── */}
+            <div className="grid gap-6 xl:grid-cols-2">
 
-            <div className="grid grid-cols-1 gap-2">
-              {demoPrompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => void submitQuery(prompt)}
-                  disabled={isBusy}
-                  className="rounded border border-stone-300 px-3 py-2 text-left text-sm font-medium text-stone-700 transition hover:border-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-
-            {error && (
-              <div className="flex gap-2 rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
-                <AlertTriangle className="mt-0.5 shrink-0" size={17} aria-hidden="true" />
-                <span>{error}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="grid gap-5 xl:grid-cols-2">
-            <section className="rounded border border-stone-300 bg-white p-4 shadow-panel">
-              <PanelTitle icon={<ClipboardList size={18} />} title="Son Siparişler" count={orders.length} />
-              <div className="mt-3 overflow-hidden rounded border border-stone-200">
-                <table className="w-full table-fixed text-left text-sm">
-                  <thead className="bg-stone-100 text-xs uppercase text-stone-500">
-                    <tr>
-                      <th className="w-20 px-3 py-2">No</th>
-                      <th className="px-3 py-2">Müşteri</th>
-                      <th className="w-32 px-3 py-2">Durum</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-200">
-                    {orders.map((order) => (
-                      <tr key={order.id}>
-                        <td className="px-3 py-3 font-semibold">#{order.id}</td>
-                        <td className="truncate px-3 py-3">{order.customer_name}</td>
-                        <td className="px-3 py-3">
-                          <span className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${statusClass(order.status)}`}>
-                            {order.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <section className="rounded border border-stone-300 bg-white p-4 shadow-panel">
-              <PanelTitle icon={<AlertTriangle size={18} />} title="Kritik Stok" count={criticalStock.length} />
-              <div className="mt-3 grid gap-2">
-                {criticalStock.length === 0 && <EmptyState text="Kritik stok yok." />}
-                {criticalStock.map((item) => (
-                  <div key={item.product_id} className="flex items-center justify-between rounded border border-rose-200 bg-rose-50 px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-rose-950">{item.product_name}</p>
-                      <p className="text-xs text-rose-800">Eşik {formatNumber(item.critical_threshold)} {item.unit}</p>
-                    </div>
-                    <span className="rounded bg-white px-2 py-1 text-sm font-bold text-rose-900">
-                      {formatNumber(item.quantity)} {item.unit}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded border border-stone-300 bg-white p-4 shadow-panel xl:col-span-2">
-              <PanelTitle icon={<Boxes size={18} />} title="Stok Durumu" count={stock.length} />
-              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {stock.slice(0, 12).map((item) => (
-                  <div
-                    key={item.product_id}
-                    className={`rounded border px-3 py-3 ${item.is_critical ? "border-rose-200 bg-rose-50" : "border-stone-200 bg-stone-50"}`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold">{item.product_name}</p>
-                        <p className="text-xs text-stone-500">{item.category}</p>
+              {/* Orders Panel */}
+              <section className="glass-strong p-5 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+                <PanelTitle
+                  icon={<ClipboardList size={18} />}
+                  title="Son Siparişler"
+                  count={orders.length}
+                  accentColor="sky"
+                />
+                <div className="mt-4 space-y-2">
+                  {orders.slice(0, 8).map((order) => {
+                    const sc = statusConfig(order.status);
+                    return (
+                      <div
+                        key={order.id}
+                        className="flex items-center justify-between rounded-xl border border-white/6 bg-white/3 px-4 py-3 transition hover:bg-white/5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-100">#{order.id}</span>
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${sc.bg} ${sc.text}`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${sc.dot}`} />
+                              {order.status}
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-xs text-slate-400">
+                            {order.customer_name}
+                            {order.cargo_company && (
+                              <span className="ml-2 inline-flex items-center gap-1 text-slate-500">
+                                <Truck size={10} /> {order.cargo_company}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-slate-200">{formatCurrency(order.total_amount)}</p>
+                          {order.estimated_delivery && (
+                            <p className="text-xs text-slate-500">{order.estimated_delivery}</p>
+                          )}
+                        </div>
                       </div>
-                      {item.is_critical ? (
-                        <AlertTriangle className="shrink-0 text-rose-600" size={17} aria-label="Kritik stok" />
-                      ) : (
-                        <CheckCircle2 className="shrink-0 text-emerald-700" size={17} aria-label="Stok yeterli" />
-                      )}
-                    </div>
-                    <p className="mt-3 text-xl font-bold">
-                      {formatNumber(item.quantity)} <span className="text-sm font-medium text-stone-500">{item.unit}</span>
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
+                    );
+                  })}
+                </div>
+              </section>
 
-            <section className="rounded border border-stone-300 bg-white p-4 shadow-panel xl:col-span-2">
-              <PanelTitle icon={<History size={18} />} title="Konuşma Geçmişi" count={history.length} />
-              <div className="mt-3 grid gap-3">
-                {history.length === 0 && <EmptyState text="Henüz kayıt yok." />}
-                {history.map((item) => (
-                  <article key={item.id} className="rounded border border-stone-200 bg-stone-50 p-3">
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-                      <span className="rounded bg-stone-200 px-2 py-1 font-semibold text-stone-700">
-                        {intentLabel(item.intent)}
-                      </span>
-                      <span>{item.response_time_ms} ms</span>
-                    </div>
-                    <p className="font-semibold text-stone-900">{item.user_query}</p>
-                    <p className="mt-1 text-sm leading-6 text-stone-700">{item.ai_response}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-          </div>
-        </section>
-      </div>
-    </main>
+              {/* Critical Stock Panel */}
+              <section className="glass-strong p-5 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+                <PanelTitle
+                  icon={<AlertTriangle size={18} />}
+                  title="Kritik Stok"
+                  count={criticalStock.length}
+                  accentColor="rose"
+                />
+                <div className="mt-4 space-y-2">
+                  {criticalStock.length === 0 && <EmptyState text="Kritik stok yok — her şey yeterli." />}
+                  {criticalStock.map((item) => {
+                    const pct = Math.min((item.quantity / (item.critical_threshold * 2)) * 100, 100);
+                    return (
+                      <div
+                        key={item.product_id}
+                        className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-3 transition hover:bg-rose-500/8"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-rose-300">{item.product_name}</p>
+                            <p className="text-xs text-rose-400/70">
+                              Eşik: {formatNumber(item.critical_threshold)} {item.unit}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <TrendingDown size={14} className="text-rose-400" />
+                            <span className="text-lg font-bold text-rose-300">
+                              {formatNumber(item.quantity)}
+                            </span>
+                            <span className="text-xs text-rose-400/70">{item.unit}</span>
+                          </div>
+                        </div>
+                        <div className="stock-bar-bg mt-2">
+                          <div
+                            className="stock-bar-fill bg-gradient-to-r from-rose-500 to-rose-400"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* All Stock Panel */}
+              <section className="glass-strong p-5 animate-fade-in xl:col-span-2" style={{ animationDelay: "0.2s" }}>
+                <PanelTitle
+                  icon={<Boxes size={18} />}
+                  title="Stok Durumu"
+                  count={stock.length}
+                  accentColor="emerald"
+                />
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {stock.slice(0, 12).map((item) => {
+                    const maxQty = item.critical_threshold * 3;
+                    const pct = Math.min((item.quantity / maxQty) * 100, 100);
+                    const barColor = item.is_critical
+                      ? "from-rose-500 to-rose-400"
+                      : "from-emerald-500 to-teal-400";
+
+                    return (
+                      <div
+                        key={item.product_id}
+                        className={`rounded-xl border px-4 py-3 transition hover:bg-white/3 ${
+                          item.is_critical
+                            ? "border-rose-500/20 bg-rose-500/5"
+                            : "border-white/6 bg-white/3"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-slate-100">{item.product_name}</p>
+                            <p className="text-xs text-slate-500">{item.category}</p>
+                          </div>
+                          {item.is_critical ? (
+                            <AlertTriangle className="shrink-0 text-rose-400" size={16} aria-label="Kritik stok" />
+                          ) : (
+                            <CheckCircle2 className="shrink-0 text-emerald-400" size={16} aria-label="Stok yeterli" />
+                          )}
+                        </div>
+                        <p className="mt-2 text-xl font-bold text-slate-100">
+                          {formatNumber(item.quantity)}{" "}
+                          <span className="text-sm font-medium text-slate-500">{item.unit}</span>
+                        </p>
+                        <div className="stock-bar-bg mt-2">
+                          <div
+                            className={`stock-bar-fill bg-gradient-to-r ${barColor}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Conversation History */}
+              <section className="glass-strong p-5 animate-fade-in xl:col-span-2" style={{ animationDelay: "0.25s" }}>
+                <PanelTitle
+                  icon={<History size={18} />}
+                  title="Konuşma Geçmişi"
+                  count={history.length}
+                  accentColor="violet"
+                />
+                <div className="mt-4 space-y-3">
+                  {history.length === 0 && <EmptyState text="Henüz konuşma yok — mikrofona dokunarak başlayın." />}
+                  {history.map((item) => {
+                    const il = intentLabel(item.intent);
+                    return (
+                      <article
+                        key={item.id}
+                        className="rounded-xl border border-white/6 bg-white/3 p-4 transition hover:bg-white/5"
+                      >
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${il.color}`}>
+                            <Zap size={10} />
+                            {il.text}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {item.response_time_ms} ms • {timeAgo(item.created_at)}
+                          </span>
+                        </div>
+                        {/* User message bubble */}
+                        <div className="mb-2 flex justify-end">
+                          <div className="max-w-[80%] rounded-2xl rounded-br-md bg-emerald-500/15 px-4 py-2.5">
+                            <p className="text-sm font-semibold text-emerald-300">{item.user_query}</p>
+                          </div>
+                        </div>
+                        {/* AI response bubble */}
+                        <div className="flex justify-start">
+                          <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-white/5 px-4 py-2.5">
+                            <p className="text-sm leading-6 text-slate-300">{item.ai_response}</p>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          </section>
+
+          {/* ── Footer ── */}
+          <footer className="border-t border-white/6 pt-4 text-center text-xs text-slate-500">
+            VoiceOps © 2026 — Hackathon Google Gemini&nbsp;·&nbsp;FastAPI + React + Gemini 2.5 Flash
+          </footer>
+        </div>
+      </main>
+    </>
   );
 }
 
-function PanelTitle({ icon, title, count }: { icon: React.ReactNode; title: string; count: number }) {
+/* ═══════════════════════════════════════════
+   Sub-components
+   ═══════════════════════════════════════════ */
+
+function PanelTitle({
+  icon,
+  title,
+  count,
+  accentColor,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  count: number;
+  accentColor: string;
+}) {
+  const colorMap: Record<string, string> = {
+    sky: "from-sky-500 to-blue-600",
+    rose: "from-rose-500 to-pink-600",
+    emerald: "from-emerald-500 to-teal-600",
+    violet: "from-violet-500 to-purple-600",
+    amber: "from-amber-500 to-orange-600",
+  };
+  const gradient = colorMap[accentColor] ?? colorMap.emerald;
+
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded bg-stone-100 text-stone-700">{icon}</span>
-        <h2 className="text-base font-semibold">{title}</h2>
+      <div className="flex items-center gap-3">
+        <span className={`grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br ${gradient} text-white shadow-lg`}>
+          {icon}
+        </span>
+        <h2 className="text-base font-bold text-slate-100">{title}</h2>
       </div>
-      <span className="rounded bg-stone-100 px-2 py-1 text-xs font-bold text-stone-700">{count}</span>
+      <span className="rounded-full bg-white/8 px-3 py-1 text-xs font-bold text-slate-300">
+        {count}
+      </span>
     </div>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="flex items-center gap-2 rounded border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-500">
-      <PackageCheck size={17} aria-hidden="true" />
+    <div className="flex items-center gap-3 rounded-xl border border-white/6 bg-white/3 px-4 py-4 text-sm text-slate-400">
+      <PackageCheck size={18} className="text-slate-500" aria-hidden="true" />
       {text}
     </div>
   );
