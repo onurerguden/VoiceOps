@@ -11,6 +11,11 @@
 - Web Speech API STT ve SpeechSynthesis TTS
 - 30 sipariş, 25 ürün, müşteri, stok ve konuşma geçmişi seed verisi
 
+  ## Demo ve Sunum
+
+- Demo Video: https://youtu.be/LeW9xG2TdmA
+- Pitch Deck: VoiceOps_pitchdeck.pdf
+
 ## En Kolay Kurulum
 
 Repo kökünde tek seferlik setup:
